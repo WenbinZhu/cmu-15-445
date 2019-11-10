@@ -9,6 +9,10 @@
 
 #pragma once
 
+#include <mutex>
+#include <list>
+#include <iterator>
+#include <unordered_map>
 #include "buffer/replacer.h"
 #include "hash/extendible_hash.h"
 
@@ -30,7 +34,12 @@ public:
     size_t Size();
 
 private:
-    // add your member variables here
+    // mutex to protect critical sections
+    std::mutex mutex;
+    // linked list to keep track of insertion order
+    std::list<T> access_list;
+    // hash map to track value positions in linked list
+    std::unordered_map<T, typename std::list<T>::iterator> value_map;
 };
 
 } // namespace cmudb
