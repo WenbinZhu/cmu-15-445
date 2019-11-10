@@ -1,4 +1,13 @@
 # CMU 15-445 Database Systems
+
+- [ ] Project 1 - Buffer Pool
+
+- [ ] Project 2 - B+Tree
+
+- [ ] Project 3 - Concurrency Control
+
+- [ ] Project 4 - Logging & Recovery
+
 # SQLite Project Source Code
 
 ### Build
