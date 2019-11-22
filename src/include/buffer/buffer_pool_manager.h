@@ -35,6 +35,9 @@ public:
     bool DeletePage(page_id_t page_id);
 
 private:
+    // select a page from free list or a victim from lru
+    Page *SelectPage();
+    // private fields
     size_t pool_size_; // number of pages in buffer pool
     Page *pages_;      // array of pages
     DiskManager *disk_manager_;
