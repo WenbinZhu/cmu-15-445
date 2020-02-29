@@ -17,6 +17,21 @@ INDEXITERATOR_TYPE::IndexIterator() {}
 INDEX_TEMPLATE_ARGUMENTS
 INDEXITERATOR_TYPE::~IndexIterator() {}
 
+INDEX_TEMPLATE_ARGUMENTS
+bool INDEXITERATOR_TYPE::isEnd() {
+    throw "not implemented.";
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+const MappingType &INDEXITERATOR_TYPE::operator*() {
+    throw "not implemented.";
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+INDEXITERATOR_TYPE &INDEXITERATOR_TYPE::operator++() {
+    throw "not implemented.";
+}
+
 template class IndexIterator<GenericKey<4>, RID, GenericComparator<4>>;
 template class IndexIterator<GenericKey<8>, RID, GenericComparator<8>>;
 template class IndexIterator<GenericKey<16>, RID, GenericComparator<16>>;

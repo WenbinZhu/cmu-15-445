@@ -28,6 +28,9 @@ namespace cmudb {
 #define B_PLUS_TREE_LEAF_PAGE_TYPE                                             \
   BPlusTreeLeafPage<KeyType, ValueType, KeyComparator>
 
+#define B_PLUS_TREE_LEAF_PARENT_PAGE_TYPE                                      \
+  BPlusTreeInternalPage<KeyType, page_id_t, KeyComparator>
+
 INDEX_TEMPLATE_ARGUMENTS
 class BPlusTreeLeafPage : public BPlusTreePage {
 
@@ -39,6 +42,7 @@ public:
     page_id_t GetNextPageId() const;
     void SetNextPageId(page_id_t next_page_id);
     KeyType KeyAt(int index) const;
+    ValueType ValueAt(int index) const;
     int KeyIndex(const KeyType &key, const KeyComparator &comparator) const;
     const MappingType &GetItem(int index);
 
@@ -54,9 +58,9 @@ public:
                     BufferPoolManager *buffer_pool_manager /* Unused */);
     void MoveAllTo(BPlusTreeLeafPage *recipient, int /* Unused */,
                    BufferPoolManager * /* Unused */);
-    void MoveFirstToEndOf(BPlusTreeLeafPage *recipient,
+    void MoveFirstToEndOf(BPlusTreeLeafPage *recipient, int parent_index,
                           BufferPoolManager *buffer_pool_manager);
-    void MoveLastToFrontOf(BPlusTreeLeafPage *recipient, int parentIndex,
+    void MoveLastToFrontOf(BPlusTreeLeafPage *recipient, int parent_index,
                            BufferPoolManager *buffer_pool_manager);
     // Debug
     std::string ToString(bool verbose = false) const;
@@ -65,8 +69,7 @@ private:
     void CopyHalfFrom(MappingType *items, int size);
     void CopyAllFrom(MappingType *items, int size);
     void CopyLastFrom(const MappingType &item);
-    void CopyFirstFrom(const MappingType &item, int parentIndex,
-                       BufferPoolManager *buffer_pool_manager);
+    void CopyFirstFrom(const MappingType &item);
     page_id_t next_page_id_;
     MappingType array[0];
 };

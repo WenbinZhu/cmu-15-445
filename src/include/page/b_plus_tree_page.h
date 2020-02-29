@@ -57,6 +57,16 @@ public:
 
     void SetLSN(lsn_t lsn = INVALID_LSN);
 
+    template <typename PageType>
+    PageType FetchPage(BufferPoolManager* buffer_pool_manager, page_id_t page_id) {
+      assert(page_id_ != INVALID_PAGE_ID);
+      auto page = buffer_pool_manager->FetchPage(page_id);
+      if (page == nullptr) {
+            throw Exception(EXCEPTION_TYPE_INDEX, "All pages are pinned.");
+      }
+      return reinterpret_cast<PageType>(page->GetData());
+    }
+
 private:
     // member variable, attributes that both internal and leaf page share
     IndexPageType page_type_;
