@@ -49,6 +49,7 @@ public:
     void MoveAllTo(BPlusTreeInternalPage *recipient, int index_in_parent,
                    BufferPoolManager *buffer_pool_manager);
     void MoveFirstToEndOf(BPlusTreeInternalPage *recipient,
+                          int parent_index,
                           BufferPoolManager *buffer_pool_manager);
     void MoveLastToFrontOf(BPlusTreeInternalPage *recipient,
                            int parent_index,
@@ -65,7 +66,7 @@ private:
                      BufferPoolManager *buffer_pool_manager);
     void CopyLastFrom(const MappingType &pair,
                       BufferPoolManager *buffer_pool_manager);
-    void CopyFirstFrom(const MappingType &pair, int parent_index,
+    void CopyFirstFrom(const MappingType &pair,
                        BufferPoolManager *buffer_pool_manager);
     MappingType array[0];
 };
