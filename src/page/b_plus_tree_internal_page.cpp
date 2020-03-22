@@ -33,14 +33,14 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Init(page_id_t page_id,
 INDEX_TEMPLATE_ARGUMENTS
 KeyType B_PLUS_TREE_INTERNAL_PAGE_TYPE::KeyAt(int index) const {
     // first key is invalid
-    assert(0 < index < GetSize());
+    assert(index >= 0 && index < GetSize());
     return array[index].first;
 }
 
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SetKeyAt(int index, const KeyType &key) {
     // first key is invalid
-    assert(0 < index < GetSize());
+    assert(index > 0 && index < GetSize());
     array[index].first = key;
 }
 
@@ -65,7 +65,7 @@ int B_PLUS_TREE_INTERNAL_PAGE_TYPE::ValueIndex(const ValueType &value) const {
  */
 INDEX_TEMPLATE_ARGUMENTS
 ValueType B_PLUS_TREE_INTERNAL_PAGE_TYPE::ValueAt(int index) const {
-    assert(0 <= index < GetSize());
+    assert(index >= 0 && index < GetSize());
     return array[index].second;
 }
 
@@ -185,7 +185,7 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::CopyHalfFrom(
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Remove(int index) {
     assert(GetSize() > 0);
-    assert(0 < index < GetSize());
+    assert(index > 0 && index < GetSize());
 
     for (int i = index; i < GetSize() - 1; ++i) {
         array[i].first = array[i + 1].first;
@@ -260,6 +260,7 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::MoveFirstToEndOf(
 
     auto parent = FetchPage<B_PLUS_TREE_INTERNAL_PAGE_TYPE *>(
         buffer_pool_manager, GetParentPageId());
+    // parent_index is this node's index in parent
     MappingType pair = std::make_pair(parent->KeyAt(parent_index), ValueAt(0));
     recipient->CopyLastFrom(pair, buffer_pool_manager);
 
@@ -298,7 +299,8 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::MoveLastToFrontOf(
     assert(recipient->GetSize() < recipient->GetMinSize());
 
     auto parent = FetchPage<B_PLUS_TREE_INTERNAL_PAGE_TYPE *>(
-        buffer_pool_manager, parent_index);
+        buffer_pool_manager, GetParentPageId());
+    // parent_index is recipient's index in parent
     MappingType pair = std::make_pair(
         parent->KeyAt(parent_index), ValueAt(GetSize() - 1));
     recipient->CopyFirstFrom(pair, buffer_pool_manager);

@@ -71,7 +71,7 @@ int B_PLUS_TREE_LEAF_PAGE_TYPE::KeyIndex(
  */
 INDEX_TEMPLATE_ARGUMENTS
 KeyType B_PLUS_TREE_LEAF_PAGE_TYPE::KeyAt(int index) const {
-    assert(0 <= index < GetSize());
+    assert(index >= 0 && index < GetSize());
     return array[index].first;
 }
 
@@ -81,7 +81,7 @@ KeyType B_PLUS_TREE_LEAF_PAGE_TYPE::KeyAt(int index) const {
  */
 INDEX_TEMPLATE_ARGUMENTS
 ValueType B_PLUS_TREE_LEAF_PAGE_TYPE::ValueAt(int index) const {
-    assert(0 <= index < GetSize());
+    assert(index >= 0 && index < GetSize());
     return array[index].second;
 }
 
@@ -91,7 +91,7 @@ ValueType B_PLUS_TREE_LEAF_PAGE_TYPE::ValueAt(int index) const {
  */
 INDEX_TEMPLATE_ARGUMENTS
 const MappingType &B_PLUS_TREE_LEAF_PAGE_TYPE::GetItem(int index) {
-    assert(0 <= index < GetSize());
+    assert(index >= 0 && index < GetSize());
     return array[index];
 }
 
@@ -186,6 +186,8 @@ bool B_PLUS_TREE_LEAF_PAGE_TYPE::Lookup(const KeyType &key, ValueType &value,
 INDEX_TEMPLATE_ARGUMENTS
 int B_PLUS_TREE_LEAF_PAGE_TYPE::RemoveAndDeleteRecord(
         const KeyType &key, const KeyComparator &comparator) {
+    assert(GetSize() > 0);
+
     int index = KeyIndex(key, comparator);
     if (index < GetSize() && !comparator(key, KeyAt(index))) {
         for (int i = index + 1; i < GetSize(); ++i) {
