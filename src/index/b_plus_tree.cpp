@@ -362,7 +362,14 @@ bool BPLUSTREE_TYPE::AdjustRoot(BPlusTreePage *old_root_node) {
  * @return : index iterator
  */
 INDEX_TEMPLATE_ARGUMENTS
-INDEXITERATOR_TYPE BPLUSTREE_TYPE::Begin() { return INDEXITERATOR_TYPE(); }
+INDEXITERATOR_TYPE BPLUSTREE_TYPE::Begin() {
+    KeyType empty_key;
+    auto leaf_page = FindLeafPage(empty_key, true);
+    INDEXITERATOR_TYPE iterator = INDEXITERATOR_TYPE(
+        0, leaf_page, buffer_pool_manager_);
+
+    return iterator;
+}
 
 /*
  * Input parameter is low key, find the leaf page that contains the input key
@@ -371,7 +378,11 @@ INDEXITERATOR_TYPE BPLUSTREE_TYPE::Begin() { return INDEXITERATOR_TYPE(); }
  */
 INDEX_TEMPLATE_ARGUMENTS
 INDEXITERATOR_TYPE BPLUSTREE_TYPE::Begin(const KeyType &key) {
-    return INDEXITERATOR_TYPE();
+    auto leaf_page = FindLeafPage(key);
+    INDEXITERATOR_TYPE iterator = INDEXITERATOR_TYPE(
+        leaf_page->KeyIndex(key, comparator_), leaf_page, buffer_pool_manager_);
+
+    return iterator;
 }
 
 /*****************************************************************************
