@@ -260,6 +260,7 @@ bool BPLUSTREE_TYPE::CoalesceOrRedistribute(N *node, Transaction *transaction) {
         buffer_pool_manager_->UnpinPage(parent_page_id, true);
     }
 
+    // if node index is 0, sibling page was deleted instead of this one
     return coalesce && node_index != 0;
 }
 
@@ -282,7 +283,7 @@ bool BPLUSTREE_TYPE::Coalesce(
         BPlusTreeInternalPage<KeyType, page_id_t, KeyComparator> *&parent,
         int index, Transaction *transaction) {
     if (index == 0) {
-        // swapping pointer will not afftect caller, however
+        // swapping pointers will not afftect caller, however
         // swap(*node, *neighbor_node) does affect caller
         std::swap(node, neighbor_node);
         index = 1;
