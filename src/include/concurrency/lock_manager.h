@@ -10,6 +10,7 @@
 #include <list>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <unordered_map>
 
 #include "common/rid.h"
@@ -17,10 +18,12 @@
 
 namespace cmudb {
 
+enum class LockType { SHARED, EXCLUSIVE };
+
 class LockManager {
 
 public:
-    LockManager(bool strict_2PL) : strict_2PL_(strict_2PL){};
+    LockManager(bool strict_2PL) : strict_2PL_(strict_2PL) {};
 
     /*** below are APIs need to implement ***/
     // lock:
@@ -38,7 +41,29 @@ public:
     /*** END OF APIs ***/
 
 private:
+    // check if transaction state is valid in order to acquire lock
+    bool TxnStateValidForLock(Transaction *txn);
+
+    // txns that were granted a lock, used for lock table
+    class GrantedTxns {
+    public:
+        GrantedTxns(LockType lockType, txn_id_t txn_id)
+            : lockType_(lockType), granted_set_({txn_id}) {};
+
+        // type of the lock granted
+        LockType lockType_;
+        // a set of txns that we granted this lock
+        std::set<txn_id_t> granted_set_;
+    };
+
+    // whether to use strict 2PL
     bool strict_2PL_;
+    // mutex to guard lock operations
+    std::mutex mutex_;
+    // lock table to record txns that were granted lock
+    std::unordered_map<RID, std::shared_ptr<GrantedTxns>> lock_table_;
+    // table of condition variables to wait and notify waiting txns
+    std::unordered_map<RID, std::shared_ptr<std::condition_variable>> cv_table_;
 };
 
 } // namespace cmudb
