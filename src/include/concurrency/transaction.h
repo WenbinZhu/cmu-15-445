@@ -52,7 +52,9 @@ public:
     Transaction(txn_id_t txn_id)
             : state_(TransactionState::GROWING),
               thread_id_(std::this_thread::get_id()),
-              txn_id_(txn_id), prev_lsn_(INVALID_LSN), shared_lock_set_{new std::unordered_set<RID>},
+              txn_id_(txn_id), prev_lsn_(INVALID_LSN),
+              root_page_id_(INVALID_PAGE_ID),
+              shared_lock_set_{new std::unordered_set<RID>},
               exclusive_lock_set_{new std::unordered_set<RID>} {
         // initialize sets
         write_set_.reset(new std::deque<WriteRecord>);
@@ -72,6 +74,10 @@ public:
     inline std::shared_ptr<std::deque<WriteRecord>> GetWriteSet() {
         return write_set_;
     }
+
+    inline page_id_t GetRootPageId() { return root_page_id_; }
+
+    inline void SetRootPageId(page_id_t root_page_id) { root_page_id_ = root_page_id; }
 
     inline std::shared_ptr<std::deque<Page *>> GetPageSet() { return page_set_; }
 
@@ -113,7 +119,9 @@ private:
     lsn_t prev_lsn_;
 
     // Below are used by concurrent index
-    // this deque contains page pointer that was latche during index operation
+    // root page id at the time of acquiring lock on root node
+    page_id_t root_page_id_;
+    // this deque contains page pointer that was latched during index operation
     std::shared_ptr<std::deque<Page *>> page_set_;
     // this set contains page_id that was deleted during index operation
     std::shared_ptr<std::unordered_set<page_id_t>> deleted_page_set_;

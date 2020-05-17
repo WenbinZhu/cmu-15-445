@@ -20,13 +20,16 @@ INDEXITERATOR_TYPE::IndexIterator(int offset,
 
 INDEX_TEMPLATE_ARGUMENTS
 INDEXITERATOR_TYPE::~IndexIterator() {
-    buffer_pool_manager_->UnpinPage(curr_page_->GetPageId(), false);
+    if (curr_page_ != nullptr) {
+        buffer_pool_manager_->UnpinPage(curr_page_->GetPageId(), false);
+    }
 }
 
 INDEX_TEMPLATE_ARGUMENTS
 bool INDEXITERATOR_TYPE::isEnd() {
-    return curr_page_->GetNextPageId() == INVALID_PAGE_ID
-           && offset_ >= curr_page_->GetSize();
+    return curr_page_ == nullptr ||
+           (curr_page_->GetNextPageId() == INVALID_PAGE_ID &&
+           offset_ >= curr_page_->GetSize());
 }
 
 INDEX_TEMPLATE_ARGUMENTS

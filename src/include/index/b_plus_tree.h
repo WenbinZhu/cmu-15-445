@@ -26,6 +26,8 @@ namespace cmudb {
 #define BPLUSTREE_INTERNAL_TYPE                                                \
     BPlusTreeInternalPage<KeyType, page_id_t, KeyComparator>
 
+enum class OpType { SEARCH, INSERT, DELETE };
+
 // Main class providing the API for the Interactive B+ Tree.
 INDEX_TEMPLATE_ARGUMENTS
 class BPlusTree {
@@ -65,6 +67,8 @@ public:
                         Transaction *transaction = nullptr);
     // expose for test purpose
     B_PLUS_TREE_LEAF_PAGE_TYPE *FindLeafPage(const KeyType &key,
+                                             Transaction *transaction,
+                                             OpType op_type,
                                              bool leftMost = false);
 
 private:
@@ -97,9 +101,14 @@ private:
     template <typename PageType>
     PageType FetchPage(page_id_t page_id);
 
+    void AcquireLatchOnPage(Page *page, Transaction *transaction, OpType op_type);
+
+    void ReleaseLatchedPages(Transaction *transaction, OpType op_type, bool is_dirty);
+
     // member variable
     std::string index_name_;
     page_id_t root_page_id_;
+    std::mutex root_pid_mutex;
     BufferPoolManager *buffer_pool_manager_;
     KeyComparator comparator_;
 };

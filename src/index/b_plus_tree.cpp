@@ -40,14 +40,24 @@ INDEX_TEMPLATE_ARGUMENTS
 bool BPLUSTREE_TYPE::GetValue(const KeyType &key,
                               std::vector<ValueType> &result,
                               Transaction *transaction) {
+    // lock root pid until root page latch is released by a txn
+    root_pid_mutex.lock();
+
     if (IsEmpty()) {
+        root_pid_mutex.unlock();
         return false;
     }
 
     result.resize(1);
-    auto leaf_page = FindLeafPage(key);
+    auto leaf_page = FindLeafPage(key, transaction, OpType::SEARCH);
     bool exists = leaf_page->Lookup(key, result[0], comparator_);
-    buffer_pool_manager_->UnpinPage(leaf_page->GetPageId(), false);
+
+    if (transaction != nullptr) {
+        ReleaseLatchedPages(transaction, OpType::SEARCH, false);
+    } else {
+        buffer_pool_manager_->UnpinPage(leaf_page->GetPageId(), false);
+        root_pid_mutex.unlock();
+    }
 
     return exists;
 }
@@ -65,8 +75,12 @@ bool BPLUSTREE_TYPE::GetValue(const KeyType &key,
 INDEX_TEMPLATE_ARGUMENTS
 bool BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value,
                             Transaction *transaction) {
+    // lock root pid until root page latch is released by a txn
+    root_pid_mutex.lock();
+
     if (IsEmpty()) {
         StartNewTree(key, value);
+        root_pid_mutex.unlock();
         return true;
     }
 
@@ -91,7 +105,7 @@ void BPLUSTREE_TYPE::StartNewTree(const KeyType &key, const ValueType &value) {
     root_node->Insert(key, value, comparator_);
 
     UpdateRootPageId(true);
-    buffer_pool_manager_->UnpinPage(root_page_id_, true);
+    buffer_pool_manager_->UnpinPage(root_node->GetPageId(), true);
 }
 
 /*
@@ -105,7 +119,7 @@ void BPLUSTREE_TYPE::StartNewTree(const KeyType &key, const ValueType &value) {
 INDEX_TEMPLATE_ARGUMENTS
 bool BPLUSTREE_TYPE::InsertIntoLeaf(const KeyType &key, const ValueType &value,
                                     Transaction *transaction) {
-    auto leaf_page = FindLeafPage(key);
+    auto leaf_page = FindLeafPage(key, transaction, OpType::INSERT);
     int old_size = leaf_page->GetSize();
     int new_size = leaf_page->Insert(key, value, comparator_);
     bool inserted = new_size != old_size;
@@ -117,7 +131,12 @@ bool BPLUSTREE_TYPE::InsertIntoLeaf(const KeyType &key, const ValueType &value,
         buffer_pool_manager_->UnpinPage(new_node->GetPageId(), true);
     }
 
-    buffer_pool_manager_->UnpinPage(leaf_page->GetPageId(), inserted);
+    if (transaction != nullptr) {
+        ReleaseLatchedPages(transaction, OpType::INSERT, inserted);
+    } else {
+        buffer_pool_manager_->UnpinPage(leaf_page->GetPageId(), inserted);
+        root_pid_mutex.unlock();
+    }
 
     return inserted;
 }
@@ -182,6 +201,8 @@ void BPLUSTREE_TYPE::InsertIntoParent(BPlusTreePage *old_node,
             InsertIntoParent(parent_node, next_node->KeyAt(0), next_node, transaction);
             buffer_pool_manager_->UnpinPage(next_node->GetPageId(), true);
         }
+        // even in transaction, parent page needs to be unpinned, to decrement pin
+        // count so that when releasing latches, the last unpin decrement it to 0
         buffer_pool_manager_->UnpinPage(parent_node->GetPageId(), true);
     }
 }
@@ -198,24 +219,34 @@ void BPLUSTREE_TYPE::InsertIntoParent(BPlusTreePage *old_node,
  */
 INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *transaction) {
+    // lock root pid until root page latch is released by a txn
+    root_pid_mutex.lock();
+
     if (IsEmpty()) {
+        root_pid_mutex.unlock();
         return;
     }
 
-    auto leaf_page = FindLeafPage(key);
+    auto leaf_page = FindLeafPage(key, transaction, OpType::DELETE);
     int old_size = leaf_page->GetSize();
     int new_size = leaf_page->RemoveAndDeleteRecord(key, comparator_);
     bool removed = new_size != old_size;
 
-    if (removed && new_size < leaf_page->GetMinSize()) {
-        if (CoalesceOrRedistribute(leaf_page, transaction)) {
-            buffer_pool_manager_->UnpinPage(leaf_page->GetPageId(), true);
-            buffer_pool_manager_->DeletePage(leaf_page->GetPageId());
-            return;
-        }
-    }
+    bool delete_page = removed && new_size < leaf_page->GetMinSize() &&
+                       CoalesceOrRedistribute(leaf_page, transaction);
 
-    buffer_pool_manager_->UnpinPage(leaf_page->GetPageId(), removed);
+    if (transaction != nullptr) {
+        if (delete_page) {
+            transaction->AddIntoDeletedPageSet(leaf_page->GetPageId());
+        }
+        ReleaseLatchedPages(transaction, OpType::DELETE, removed);
+    } else {
+        buffer_pool_manager_->UnpinPage(leaf_page->GetPageId(), removed);
+        if (delete_page) {
+            buffer_pool_manager_->DeletePage(leaf_page->GetPageId());
+        }
+        root_pid_mutex.unlock();
+    }
 }
 
 /*
@@ -241,23 +272,30 @@ bool BPLUSTREE_TYPE::CoalesceOrRedistribute(N *node, Transaction *transaction) {
     auto sibling_node = FetchPage<N *>(sibling_page_id);
     bool coalesce = sibling_node->GetSize() <= sibling_node->GetMinSize();
 
+    bool delete_parent = false;
     if (coalesce) {
-        bool delete_parent = Coalesce(
-            sibling_node, node, parent_node, node_index, transaction);
+        delete_parent = Coalesce(sibling_node, node, parent_node,
+                                 node_index, transaction);
         buffer_pool_manager_->UnpinPage(sibling_page_id, true);
-        buffer_pool_manager_->UnpinPage(parent_page_id, true);
         // if node index is 0, node and sibling is swaped, so sibling
         // paged need to be deleted instead of this node
         if (node_index == 0) {
             buffer_pool_manager_->DeletePage(sibling_page_id);
         }
-        if (delete_parent) {
-            buffer_pool_manager_->DeletePage(parent_page_id);
-        }
     } else {
         Redistribute(sibling_node, node, node_index);
         buffer_pool_manager_->UnpinPage(sibling_page_id, true);
-        buffer_pool_manager_->UnpinPage(parent_page_id, true);
+    }
+
+    // even in transaction, parent page needs to be unpinned, to decrement pin
+    // count so that when releasing latches, the last unpin decrement it to 0
+    buffer_pool_manager_->UnpinPage(parent_page_id, true);
+    if (delete_parent) {
+        if (transaction != nullptr) {
+            transaction->AddIntoDeletedPageSet(parent_page_id);
+        } else {
+            buffer_pool_manager_->DeletePage(parent_page_id);
+        }
     }
 
     // if node index is 0, sibling page was deleted instead of this one
@@ -364,8 +402,14 @@ bool BPLUSTREE_TYPE::AdjustRoot(BPlusTreePage *old_root_node) {
  */
 INDEX_TEMPLATE_ARGUMENTS
 INDEXITERATOR_TYPE BPLUSTREE_TYPE::Begin() {
+    std::lock_guard<std::mutex> root_pid_lock(root_pid_mutex);
+
+    if (IsEmpty()) {
+        return INDEXITERATOR_TYPE(0, nullptr, buffer_pool_manager_);
+    }
+
     KeyType empty_key;
-    auto leaf_page = FindLeafPage(empty_key, true);
+    auto leaf_page = FindLeafPage(empty_key, nullptr, OpType::SEARCH, true);
     INDEXITERATOR_TYPE iterator = INDEXITERATOR_TYPE(
         0, leaf_page, buffer_pool_manager_);
 
@@ -379,7 +423,13 @@ INDEXITERATOR_TYPE BPLUSTREE_TYPE::Begin() {
  */
 INDEX_TEMPLATE_ARGUMENTS
 INDEXITERATOR_TYPE BPLUSTREE_TYPE::Begin(const KeyType &key) {
-    auto leaf_page = FindLeafPage(key);
+    std::lock_guard<std::mutex> root_pid_lock(root_pid_mutex);
+
+    if (IsEmpty()) {
+        return INDEXITERATOR_TYPE(0, nullptr, buffer_pool_manager_);
+    }
+
+    auto leaf_page = FindLeafPage(key, nullptr, OpType::SEARCH);
     INDEXITERATOR_TYPE iterator = INDEXITERATOR_TYPE(
         leaf_page->KeyIndex(key, comparator_), leaf_page, buffer_pool_manager_);
 
@@ -395,19 +445,34 @@ INDEXITERATOR_TYPE BPLUSTREE_TYPE::Begin(const KeyType &key) {
  */
 INDEX_TEMPLATE_ARGUMENTS
 B_PLUS_TREE_LEAF_PAGE_TYPE *BPLUSTREE_TYPE::FindLeafPage(const KeyType &key,
+                                                         Transaction *transaction,
+                                                         OpType op_type,
                                                          bool leftMost) {
-    assert(!IsEmpty());
+    // root page id mutex must be locked before this
+    auto curr_page = FetchPage<Page *>(root_page_id_);
+    auto curr_btree_page = reinterpret_cast<BPlusTreePage *>(curr_page->GetData());
 
-    auto curr_page = FetchPage<BPlusTreePage *>(root_page_id_);
-    while (!curr_page->IsLeafPage()) {
+    if (transaction != nullptr) {
+        transaction->SetRootPageId(root_page_id_);
+        AcquireLatchOnPage(curr_page, transaction, op_type);
+    }
+
+    while (!curr_btree_page->IsLeafPage()) {
         auto internal_page = reinterpret_cast<BPLUSTREE_INTERNAL_TYPE *>(curr_page);
         page_id_t next_page_id = leftMost ? internal_page->ValueAt(0)
                                           : internal_page->Lookup(key, comparator_);
-        buffer_pool_manager_->UnpinPage(internal_page->GetPageId(), false);
-        curr_page = FetchPage<BPlusTreePage *>(next_page_id);
+        curr_page = FetchPage<Page *>(next_page_id);
+        curr_btree_page = reinterpret_cast<BPlusTreePage *>(curr_page->GetData());
+        // a page can only be unpinned after the latch is released, otherwise
+        // it could be evicted and reloaded with a new latch instance.
+        if (transaction != nullptr) {
+            AcquireLatchOnPage(curr_page, transaction, op_type);
+        } else {
+            buffer_pool_manager_->UnpinPage(internal_page->GetPageId(), false);
+        }
     }
 
-    return reinterpret_cast<B_PLUS_TREE_LEAF_PAGE_TYPE *>(curr_page);
+    return reinterpret_cast<B_PLUS_TREE_LEAF_PAGE_TYPE *>(curr_btree_page);
 }
 
 /*
@@ -439,6 +504,57 @@ PageType BPLUSTREE_TYPE::FetchPage(page_id_t page_id) {
     Page *page = buffer_pool_manager_->FetchPage(page_id);
     assert(page != nullptr);
     return reinterpret_cast<PageType>(page->GetData());
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void BPLUSTREE_TYPE::AcquireLatchOnPage(Page *page, Transaction *transaction, OpType op_type) {
+    if (op_type == OpType::SEARCH) {
+        page->RLatch();
+        ReleaseLatchedPages(transaction, op_type, false);
+    } else if (op_type == OpType::INSERT) {
+        page->WLatch();
+        auto btree_page = reinterpret_cast<BPlusTreePage *>(page->GetData());
+        if (btree_page->GetSize() < btree_page->GetMaxSize()) {
+            ReleaseLatchedPages(transaction, op_type, false);
+        }
+    } else {
+        page->WLatch();
+        auto btree_page = reinterpret_cast<BPlusTreePage *>(page->GetData());
+        if (btree_page->GetSize() > btree_page->GetMinSize()) {
+            ReleaseLatchedPages(transaction, op_type, false);
+        }
+    }
+    transaction->AddIntoPageSet(page);
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void BPLUSTREE_TYPE::ReleaseLatchedPages(Transaction *transaction, OpType op_type, bool is_dirty) {
+    auto locked_pages = transaction->GetPageSet();
+    while (!locked_pages->empty()) {
+        Page *page = locked_pages->front();
+        if (op_type == OpType::SEARCH) {
+            page->RUnlatch();
+        } else {
+            page->WUnlatch();
+        }
+        locked_pages->pop_front();
+
+        // release the root pid mutex if root page latch is released
+        // cannot use parent page id to check if page is a root since
+        // the root page can be changed by the time of release
+        if (page->GetPageId() == transaction->GetRootPageId()) {
+            transaction->SetRootPageId(INVALID_PAGE_ID);
+            root_pid_mutex.unlock();
+        }
+
+        buffer_pool_manager_->UnpinPage(page->GetPageId(), is_dirty);
+    }
+
+    auto deleted_pages = transaction->GetDeletedPageSet();
+    for (auto pid = deleted_pages->begin(); pid != deleted_pages->end(); ++pid) {
+        buffer_pool_manager_->DeletePage(*pid);
+    }
+    deleted_pages->clear();
 }
 
 /*
