@@ -12,7 +12,7 @@ Transaction *TransactionManager::Begin() {
     Transaction *txn = new Transaction(next_txn_id_++);
 
     if (ENABLE_LOGGING) {
-        // TODO: write log and update transaction's prev_lsn here
+        AppendLogRecord(txn, LogRecordType::BEGIN);
     }
 
     return txn;
@@ -34,7 +34,10 @@ void TransactionManager::Commit(Transaction *txn) {
     write_set->clear();
 
     if (ENABLE_LOGGING) {
-        // TODO: write log and update transaction's prev_lsn here
+        lsn_t lsn = AppendLogRecord(txn, LogRecordType::COMMIT);
+        while (lsn > log_manager_->GetPersistentLSN()) {
+            log_manager_->WaitForLogFlush();
+        }
     }
 
     // release all the lock
@@ -71,7 +74,10 @@ void TransactionManager::Abort(Transaction *txn) {
     write_set->clear();
 
     if (ENABLE_LOGGING) {
-        // TODO: write log and update transaction's prev_lsn here
+        lsn_t lsn = AppendLogRecord(txn, LogRecordType::ABORT);
+        while (lsn > log_manager_->GetPersistentLSN()) {
+            log_manager_->WaitForLogFlush();
+        }
     }
 
     // release all the lock
@@ -85,4 +91,14 @@ void TransactionManager::Abort(Transaction *txn) {
         lock_manager_->Unlock(txn, locked_rid);
     }
 }
+
+lsn_t TransactionManager::AppendLogRecord(Transaction *txn,
+                                         LogRecordType recordType) {
+    LogRecord record(txn->GetTransactionId(), txn->GetPrevLSN(), recordType);
+    lsn_t lsn = log_manager_->AppendLogRecord(record);
+    txn->SetPrevLSN(lsn);
+
+    return lsn;
+}
+
 } // namespace cmudb

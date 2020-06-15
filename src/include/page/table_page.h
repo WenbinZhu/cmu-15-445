@@ -75,6 +75,9 @@ private:
     /**
      * helper functions
      */
+    void AppendLogRecord(LogManager *log_manager,
+                         LogRecord &log_record,
+                         Transaction *txn);
     int32_t GetTupleOffset(int slot_num);
     int32_t GetTupleSize(int slot_num);
     void SetTupleOffset(int slot_num, int32_t offset);

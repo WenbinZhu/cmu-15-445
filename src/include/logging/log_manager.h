@@ -19,8 +19,9 @@ namespace cmudb {
 class LogManager {
 public:
     LogManager(DiskManager *disk_manager)
-            : next_lsn_(0), persistent_lsn_(INVALID_LSN),
-              disk_manager_(disk_manager) {
+            : offset_(0), next_lsn_(0),
+            persistent_lsn_(INVALID_LSN),
+            disk_manager_(disk_manager) {
         // TODO: you may intialize your own defined memeber variables here
         log_buffer_ = new char[LOG_BUFFER_SIZE];
         flush_buffer_ = new char[LOG_BUFFER_SIZE];
@@ -44,14 +45,21 @@ public:
     inline void SetPersistentLSN(lsn_t lsn) { persistent_lsn_ = lsn; }
     inline char *GetLogBuffer() { return log_buffer_; }
 
-private:
-    // TODO: you may add your own member variables
-    // also remember to change constructor accordingly
+    // force/wait for log flush to complete
+    void ForceLogFlushAndWait();
+    void WaitForLogFlush();
 
+private:
+    // swap log buffer and flush buffer and return size of bytes to flush
+    int SwapBuffer();
+    // offset in the log buffer
+    int offset_;
     // atomic counter, record the next log sequence number
     std::atomic<lsn_t> next_lsn_;
     // log records before & include persistent_lsn_ have been written to disk
     std::atomic<lsn_t> persistent_lsn_;
+    // a future to wait on for log flush to complete
+    std::shared_future<void> flush_future_;
     // log buffer related
     char *log_buffer_;
     char *flush_buffer_;

@@ -196,6 +196,9 @@ Page *BufferPoolManager::SelectPage() {
     Page *page = nullptr;
     if (replacer_->Victim(page)) {
         if (page->is_dirty_) {
+            while (page->GetLSN() < log_manager_->GetPersistentLSN()) {
+                log_manager_->ForceLogFlushAndWait();
+            }
             disk_manager_->WritePage(page->page_id_, page->GetData());
             page->is_dirty_ = false;
         }

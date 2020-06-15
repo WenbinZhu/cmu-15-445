@@ -43,7 +43,7 @@ enum class LogRecordType {
     COMMIT,
     ABORT,
     // when create a new page in heap table
-            NEWPAGE,
+    NEWPAGE,
 };
 
 class LogRecord {

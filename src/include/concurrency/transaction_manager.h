@@ -23,6 +23,7 @@ public:
     void Abort(Transaction *txn);
 
 private:
+    lsn_t AppendLogRecord(Transaction *txn, LogRecordType recordType);
     std::atomic<txn_id_t> next_txn_id_;
     LockManager *lock_manager_;
     LogManager *log_manager_;
