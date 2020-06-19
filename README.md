@@ -6,7 +6,7 @@
 
 - [x] Project 3 - Concurrency Control
 
-- [ ] Project 4 - Logging & Recovery
+- [x] Project 4 - Logging & Recovery
 
 # SQLite Project Source Code
 
