@@ -50,7 +50,7 @@ TEST(HeaderPageTest, UnitTest) {
 
   EXPECT_EQ(page->GetRecordCount(), 0);
 
-  delete buffer_pool_manager;
+  // delete buffer_pool_manager;
   delete disk_manager;
   remove("test.db");
   remove("test.log");

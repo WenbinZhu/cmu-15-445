@@ -34,8 +34,6 @@ public:
     bool DeserializeLogRecord(const char *data, LogRecord &log_record);
 
 private:
-    // TODO: you can add whatever member variable here
-    // Don't forget to initialize newly added variable in constructor
     DiskManager *disk_manager_;
     BufferPoolManager *buffer_pool_manager_;
     // maintain active transactions and its corresponds latest lsn

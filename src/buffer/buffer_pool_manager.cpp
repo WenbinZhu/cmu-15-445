@@ -174,8 +174,9 @@ Page *BufferPoolManager::NewPage(page_id_t &page_id) {
 
     page_id = disk_manager_->AllocatePage();
     page->page_id_ = page_id;
-    page->ResetMemory();
     page->pin_count_++;
+    page->is_dirty_ = true;
+    page->ResetMemory();
     page_table_->Insert(page_id, page);
 
     return page;
@@ -196,8 +197,10 @@ Page *BufferPoolManager::SelectPage() {
     Page *page = nullptr;
     if (replacer_->Victim(page)) {
         if (page->is_dirty_) {
-            while (page->GetLSN() < log_manager_->GetPersistentLSN()) {
-                log_manager_->ForceLogFlushAndWait();
+            if (ENABLE_LOGGING) {
+                while (page->GetLSN() < log_manager_->GetPersistentLSN()) {
+                    log_manager_->ForceLogFlushAndWait();
+                }
             }
             disk_manager_->WritePage(page->page_id_, page->GetData());
             page->is_dirty_ = false;

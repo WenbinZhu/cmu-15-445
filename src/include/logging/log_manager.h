@@ -52,6 +52,8 @@ public:
 private:
     // swap log buffer and flush buffer and return size of bytes to flush
     int SwapBuffer();
+    // flsuh log buffer to disk
+    void FlushLog();
     // offset in the log buffer
     int offset_;
     // atomic counter, record the next log sequence number

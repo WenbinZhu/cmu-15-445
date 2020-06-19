@@ -15,7 +15,14 @@ namespace cmudb {
  */
 void LogManager::RunFlushThread() {
     ENABLE_LOGGING = true;
-    flush_thread_ = new std::thread([this] {
+    flush_thread_ = new std::thread(&LogManager::FlushLog, this);
+}
+
+/**
+ * flsuh log buffer to disk
+ */
+void LogManager::FlushLog() {
+    while (ENABLE_LOGGING) {
         std::unique_lock<std::mutex> lock(latch_);
         cv_.wait_for(lock, LOG_TIMEOUT);
         int last_lsn = next_lsn_ - 1;
@@ -24,12 +31,16 @@ void LogManager::RunFlushThread() {
         flush_future_ = promise.get_future().share();
         // unlock latch before disk write
         lock.unlock();
-        disk_manager_->WriteLog(log_buffer_, flush_size);
+        disk_manager_->WriteLog(flush_buffer_, flush_size);
+        lock.lock();
         SetPersistentLSN(last_lsn);
         promise.set_value();
-    });
+    }
 }
 
+/**
+ * swap log buffer and flush buffer
+ */
 int LogManager::SwapBuffer() {
     std::swap(log_buffer_, flush_buffer_);
     int flush_size = offset_;
@@ -59,7 +70,6 @@ void LogManager::StopFlushThread() {
 void LogManager::ForceLogFlushAndWait() {
     std::unique_lock<std::mutex> lock(latch_);
     cv_.notify_one();
-    lock.unlock();
 
     std::shared_future<void> future = flush_future_;
     if (future.valid()) {
